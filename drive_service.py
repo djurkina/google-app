@@ -1,10 +1,12 @@
 # drive_service.py
+
 import re
 import os
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
-from config import SERVICE_ACCOUNT_FILE
 from tenacity import retry, wait_fixed, stop_after_attempt
+
+from config import SERVICE_ACCOUNT_FILE
 
 SCOPES = ["https://www.googleapis.com/auth/drive"]
 
@@ -93,9 +95,14 @@ def set_file_permission(file_id: str, email: str, role: str) -> str:
 
 @retry(wait=wait_fixed(2), stop=stop_after_attempt(3))
 def get_file_hierarchy(file_id: str) -> str:
+    """
+    Возвращает строковый отчёт об иерархии для указанного файла/папки, а также
+    дочерних элементов (если это папка).
+    """
     service = get_drive_service()
     file = service.files().get(fileId=file_id, fields="id, name, parents, mimeType").execute()
     report = f"Объект: {file.get('name')} (ID: {file.get('id')})\n"
+
     parents = file.get("parents", [])
     parent_chain = []
     while parents:
@@ -103,10 +110,13 @@ def get_file_hierarchy(file_id: str) -> str:
         parent = service.files().get(fileId=parent_id, fields="id, name, parents").execute()
         parent_chain.append(f"{parent.get('name')} (ID: {parent.get('id')})")
         parents = parent.get("parents", [])
+
     if parent_chain:
         report += "Родительская иерархия:\n" + " -> ".join(parent_chain) + "\n"
     else:
         report += "Нет родительской иерархии.\n"
+
+    # Если объект - папка, то выводим её содержимое
     if file.get("mimeType") == "application/vnd.google-apps.folder":
         children = list_files_in_folder(file_id)
         if children:
@@ -114,4 +124,5 @@ def get_file_hierarchy(file_id: str) -> str:
             report += "Дочерние файлы/папки:\n" + child_list
         else:
             report += "Нет дочерних файлов/папок.\n"
+
     return report
